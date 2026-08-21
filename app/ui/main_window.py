@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk
+import threading
 
-from app.banks.registry import get_active_banks 
 from app.collection.manager import CollectionManager
-print("ЗАГРУЖЕН main_window.py")
+
 class MainWindow:
     def __init__(self, root):
         self.root = root
@@ -12,9 +12,8 @@ class MainWindow:
         self.root.geometry("800x650")
         self.root.minsize(800, 550)
 
-        self.create_widgets()
-
         self.collection_manager = CollectionManager()
+        self.create_widgets()
 
     def create_widgets(self):
         # Заголовок
@@ -203,7 +202,7 @@ class MainWindow:
 
         self.progress_label = ttk.Label(
             progress_frame,
-            text="0 / 25"
+            text=f"0 / {len(self.collection_manager.banks)}"
         )
 
         self.progress_label.pack(
@@ -234,7 +233,6 @@ class MainWindow:
         )
 
     def start_collection(self):
-        print("КНОПКА НАЖАТА")
         period = self.month_var.get()
 
         if not period:
@@ -251,7 +249,69 @@ class MainWindow:
             state="disabled"
         )
 
-        self.collection_manager.start(period)
+        self.progress.configure(value=0, maximum=len(self.collection_manager.banks))
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        thread = threading.Thread(
+            target=self._run_collection,
+            args=(period,),
+            daemon=True,
+        )
+        thread.start()
+
+    def _run_collection(self, period):
+        try:
+            output_root, manual_checks = self.collection_manager.start(
+                period,
+                on_bank_start=lambda bank: self._schedule(
+                    self._set_bank_status,
+                    bank["id"],
+                    bank["name"],
+                    "Обработка...",
+                    "",
+                ),
+                on_bank_done=lambda bank, files: self._schedule(
+                    self._finish_bank,
+                    bank["id"],
+                    bank["name"],
+                    files,
+                ),
+            )
+            self._schedule(
+                self._collection_finished,
+                output_root,
+                manual_checks,
+            )
+        except Exception as error:
+            self._schedule(self._collection_failed, str(error))
+
+    def _schedule(self, callback, *args):
+        self.root.after(0, callback, *args)
+
+    def _set_bank_status(self, bank_id, name, status, file_name):
+        self.tree.insert("", "end", iid=bank_id, values=(name, status, file_name))
+
+    def _finish_bank(self, bank_id, name, files):
+        file_name = ", ".join(files) if files else "Не найдено"
+        if self.tree.exists(bank_id):
+            self.tree.item(bank_id, values=(name, "Завершено", file_name))
+        else:
+            self._set_bank_status(bank_id, name, "Завершено", file_name)
+        completed = len(self.tree.get_children())
+        self.progress.configure(value=completed)
+        self.progress_label.configure(
+            text=f"{completed} / {len(self.collection_manager.banks)}"
+        )
+
+    def _collection_finished(self, output_root, manual_checks):
+        self.start_button.config(state="normal")
+        suffix = f" Требуют проверки: {len(manual_checks)}." if manual_checks else ""
+        self.result_label.config(text=f"Готово: {output_root}.{suffix}")
+
+    def _collection_failed(self, error):
+        self.start_button.config(state="normal")
+        self.result_label.config(text=f"Ошибка: {error}")
 
     def run(self):
         self.root.mainloop()

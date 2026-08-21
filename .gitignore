@@ -1,0 +1,33 @@
+# Virtual environment
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Environment variables
+.env
+
+# Data
+data/input/
+data/output/
+data/temp/
+data/archive/
+
+# Downloaded reports and OCR artifacts
+downloads/
+ocr_pages/
+ocr_work/
+*.pdf
+test_page_*.png
+ocr_text.txt
+
+# Logs
+logs/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
